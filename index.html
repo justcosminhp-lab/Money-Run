@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#18a558">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Money Run">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Money Run</title>
+<style>
+  /* ============================================================
+     MONEY RUN - stiluri UI (meniuri, HUD, panouri)
+     Jocul propriu-zis e desenat pe <canvas>. UI-ul e DOM peste.
+     ============================================================ */
+  :root{
+    --green:#18a558;       /* verde "money" - accent principal */
+    --green-d:#0e7a3f;
+    --gold:#ffd23f;        /* auriu monede */
+    --gold-d:#e0a800;
+    --navy:#15233b;        /* text inchis / panouri */
+    --coral:#ff6b6b;       /* pericol / butoane secundare */
+    --cream:#fff7e6;
+    --white:#ffffff;
+    --shadow:0 6px 0 rgba(0,0,0,.22), 0 10px 22px rgba(0,0,0,.22);
+    --font:"Baloo 2","Trebuchet MS","Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;user-select:none;}
+  html,body{height:100%;overflow:hidden;background:#0b1320;font-family:var(--font);
+    overscroll-behavior:none;touch-action:none;}
+  #game{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none;}
+
+  /* ---- Strat HUD (in timpul jocului) ---- */
+  #hud{position:fixed;inset:0;pointer-events:none;display:none;
+    padding:max(10px,env(safe-area-inset-top)) 14px 0;color:var(--white);
+    text-shadow:0 2px 0 rgba(0,0,0,.35);font-weight:800;}
+  #hud.show{display:block;}
+  .hud-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .hud-pill{background:rgba(11,19,32,.55);border-radius:16px;padding:8px 14px;
+    backdrop-filter:blur(4px);line-height:1.05;}
+  .hud-pill .lbl{font-size:11px;opacity:.8;font-weight:700;letter-spacing:.5px;}
+  .hud-pill .val{font-size:22px;}
+  #pauseBtn{pointer-events:auto;background:rgba(11,19,32,.55);border:none;color:#fff;
+    width:44px;height:44px;border-radius:14px;font-size:18px;font-weight:900;cursor:pointer;}
+  #pwups{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .pw{background:rgba(11,19,32,.55);border-radius:14px;padding:6px 10px;font-size:14px;
+    display:flex;align-items:center;gap:6px;}
+  .pw .bar{width:42px;height:6px;border-radius:3px;background:rgba(255,255,255,.25);overflow:hidden;}
+  .pw .bar i{display:block;height:100%;background:var(--gold);}
+
+  /* ---- Overlay-uri (meniu, shop, settings, game over, pauza) ---- */
+  .overlay{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;
+    justify-content:center;gap:16px;padding:24px;
+    padding-top:max(24px,env(safe-area-inset-top));padding-bottom:max(24px,env(safe-area-inset-bottom));
+    background:radial-gradient(120% 80% at 50% -10%,rgba(110,198,255,.35),transparent),
+               linear-gradient(180deg,#1c3a63 0%,#102540 100%);
+    color:var(--white);text-align:center;z-index:5;overflow-y:auto;}
+  .overlay.show{display:flex;}
+
+  .logo{font-size:clamp(44px,13vw,84px);font-weight:900;line-height:.9;letter-spacing:-1px;
+    color:var(--gold);text-shadow:0 5px 0 var(--gold-d),0 8px 14px rgba(0,0,0,.4);}
+  .logo small{display:block;font-size:.26em;color:#fff;letter-spacing:6px;font-weight:800;
+    text-shadow:0 2px 0 rgba(0,0,0,.3);margin-top:6px;}
+  .tag{opacity:.85;font-weight:700;font-size:14px;margin-top:-6px;}
+
+  .btn{font-family:var(--font);font-weight:900;font-size:20px;color:#fff;border:none;
+    border-radius:18px;padding:16px 22px;min-width:230px;cursor:pointer;
+    background:var(--green);box-shadow:var(--shadow);transition:transform .06s,filter .15s;}
+  .btn:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(0,0,0,.22),0 6px 12px rgba(0,0,0,.2);}
+  .btn.gold{background:var(--gold);color:var(--navy);}
+  .btn.coral{background:var(--coral);}
+  .btn.ghost{background:rgba(255,255,255,.14);}
+  .btn.sm{font-size:16px;min-width:0;padding:12px 18px;}
+  .btn[disabled]{filter:grayscale(.7) brightness(.8);cursor:not-allowed;}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:center;width:100%;max-width:340px;}
+
+  .stat-card{background:rgba(255,255,255,.1);border-radius:18px;padding:14px 18px;
+    display:flex;justify-content:space-between;align-items:center;width:100%;max-width:340px;font-weight:800;}
+  .stat-card .v{font-size:24px;color:var(--gold);}
+
+  .panel{background:var(--cream);color:var(--navy);border-radius:24px;padding:18px;
+    width:100%;max-width:380px;box-shadow:var(--shadow);}
+  .panel h2{font-size:26px;margin-bottom:4px;}
+  .panel .sub{font-size:13px;opacity:.7;margin-bottom:14px;font-weight:700;}
+
+  .go-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;}
+  .go-stats div{background:#fff;border-radius:14px;padding:12px;font-weight:800;}
+  .go-stats .k{font-size:12px;opacity:.6;}
+  .go-stats .v{font-size:24px;color:var(--green-d);}
+  .go-stats .v.gold{color:var(--gold-d);}
+  .best-flag{display:inline-block;background:var(--gold);color:var(--navy);font-weight:900;
+    border-radius:10px;padding:4px 10px;font-size:13px;margin-top:6px;}
+
+  /* ---- Shop ---- */
+  .shop-money{font-weight:900;color:var(--gold);font-size:20px;margin-bottom:6px;}
+  .shop-tabs{display:flex;gap:8px;justify-content:center;margin-bottom:12px;}
+  .shop-tab{background:rgba(0,0,0,.06);border:none;border-radius:12px;padding:8px 16px;
+    font-weight:800;font-family:var(--font);font-size:14px;cursor:pointer;color:var(--navy);}
+  .shop-tab.active{background:var(--green);color:#fff;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .item{background:#fff;border-radius:16px;padding:12px;text-align:center;cursor:pointer;
+    border:3px solid transparent;transition:transform .08s;}
+  .item:active{transform:scale(.96);}
+  .item.owned{border-color:#cfe9d6;}
+  .item.equipped{border-color:var(--green);}
+  .swatch{width:46px;height:46px;border-radius:12px;margin:0 auto 8px;box-shadow:inset 0 -6px 0 rgba(0,0,0,.15);}
+  .item .nm{font-weight:800;font-size:14px;}
+  .item .pr{font-size:13px;font-weight:800;color:var(--gold-d);margin-top:4px;}
+  .item .pr.have{color:var(--green);}
+
+  /* ---- Settings ---- */
+  .toggle{display:flex;justify-content:space-between;align-items:center;
+    background:#fff;border-radius:14px;padding:14px 16px;font-weight:800;margin-bottom:10px;}
+  .sw{width:54px;height:30px;border-radius:15px;background:#cdd5df;position:relative;cursor:pointer;transition:.2s;}
+  .sw.on{background:var(--green);}
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;
+    background:#fff;transition:.2s;box-shadow:0 2px 4px rgba(0,0,0,.2);}
+  .sw.on::after{left:27px;}
+
+  .hint{font-size:12px;opacity:.7;font-weight:700;max-width:320px;}
+  .countdown{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    font-size:120px;font-weight:900;color:#fff;text-shadow:0 6px 0 rgba(0,0,0,.3);z-index:6;pointer-events:none;}
+  .countdown.show{display:flex;}
+  .flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4;}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ===================== HUD ===================== -->
+<div id="hud">
+  <div class="hud-row">
+    <div>
+      <div class="hud-pill"><div class="lbl">SCOR</div><div class="val" id="hudScore">0</div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-start;">
+      <div class="hud-pill"><div class="lbl">BANI</div><div class="val" id="hudMoney">0</div></div>
+      <button id="pauseBtn" aria-label="Pauza">II</button>
+    </div>
+  </div>
+  <div class="hud-row" style="margin-top:8px;">
+    <div class="hud-pill"><div class="lbl">DISTANTA</div><div class="val" id="hudDist">0 m</div></div>
+  </div>
+  <div id="pwups"></div>
+</div>
+
+<!-- ===================== MENIU PRINCIPAL ===================== -->
+<div id="menu" class="overlay show">
+  <div class="logo">MONEY<small>RUN</small></div>
+  <div class="tag">Alearga, sari, aduna banii!</div>
+  <div class="col">
+    <button class="btn gold" id="playBtn">▶  Joaca</button>
+    <div class="row">
+      <button class="btn sm ghost" id="shopBtn">🛒 Magazin</button>
+      <button class="btn sm ghost" id="settingsBtn">⚙ Setari</button>
+    </div>
+    <div class="stat-card"><span>🏆 Cel mai bun scor</span><span class="v" id="menuBest">0</span></div>
+    <div class="stat-card"><span>💰 Bani totali</span><span class="v" id="menuMoney">0</span></div>
+  </div>
+  <div class="hint" id="ctrlHint"></div>
+</div>
+
+<!-- ===================== MAGAZIN ===================== -->
+<div id="shop" class="overlay">
+  <div class="panel">
+    <h2>Magazin</h2>
+    <div class="sub">Modificari pur cosmetice</div>
+    <div class="shop-money">💰 <span id="shopMoney">0</span></div>
+    <div class="shop-tabs">
+      <button class="shop-tab active" data-tab="skin">Personaje</button>
+      <button class="shop-tab" data-tab="trail">Trail-uri</button>
+    </div>
+    <div class="grid" id="shopGrid"></div>
+  </div>
+  <button class="btn ghost sm" id="shopBack">← Inapoi</button>
+</div>
+
+<!-- ===================== SETARI ===================== -->
+<div id="settings" class="overlay">
+  <div class="panel">
+    <h2>Setari</h2>
+    <div class="sub">Se salveaza automat</div>
+    <div class="toggle"><span>🔊 Efecte sonore</span><div class="sw" id="swSound"></div></div>
+    <div class="toggle"><span>🎵 Muzica de fundal</span><div class="sw" id="swMusic"></div></div>
+    <div class="toggle"><span>📳 Vibratii</span><div class="sw" id="swVibe"></div></div>
+    <button class="btn coral sm" id="resetBtn" style="width:100%;margin-top:6px;">Reseteaza progresul</button>
+  </div>
+  <button class="btn ghost sm" id="settingsBack">← Inapoi</button>
+</div>
+
+<!-- ===================== PAUZA ===================== -->
+<div id="pause" class="overlay">
+  <div class="logo" style="font-size:48px;">PAUZA</div>
+  <div class="col">
+    <button class="btn gold" id="resumeBtn">▶ Continua</button>
+    <button class="btn ghost" id="pauseHome">🏠 Meniu</button>
+  </div>
+</div>
+
+<!-- ===================== GAME OVER ===================== -->
+<div id="gameover" class="overlay">
+  <div class="panel">
+    <h2 id="goTitle">Game Over</h2>
+    <div class="sub">Bine alergat!</div>
+    <div class="go-stats">
+      <div><div class="k">SCOR</div><div class="v" id="goScore">0</div></div>
+      <div><div class="k">DISTANTA</div><div class="v" id="goDist">0 m</div></div>
+      <div><div class="k">BANI RUNDA</div><div class="v gold" id="goMoney">0</div></div>
+      <div><div class="k">CEL MAI BUN</div><div class="v" id="goBest">0</div></div>
+    </div>
+    <div id="goBestFlag" style="display:none;"><span class="best-flag">🏆 Record nou!</span></div>
+  </div>
+  <div class="col">
+    <button class="btn gold" id="reviveBtn">📺 Continua o data</button>
+    <div class="row">
+      <button class="btn sm" id="replayBtn">↻ Reia</button>
+      <button class="btn sm ghost" id="goHome">🏠 Meniu</button>
+    </div>
+  </div>
+</div>
+
+<div class="countdown" id="countdown"></div>
+<div class="flash" id="flash"></div>
+
+<script>
+/* ================================================================
+   MONEY RUN  -  endless runner pseudo-3D
+   Un singur fisier. Fara biblioteci externe.
+   Sectiuni: Stocare / Audio / Config / Stare / Render / Input /
+             Spawn / Update / Power-ups / UI(meniuri) / Shop.
+   Comentarii in romana (fara diacritice) ca sa fie usor de modificat.
+   ================================================================ */
+
+/* ---------------- STOCARE (localStorage cu fallback in memorie) ----------------
+   Pe telefon (PWA / APK) salveaza permanent. In preview-uri fara storage
+   cade automat pe memorie ca sa nu dea erori. */
+const Store = {
+  ok:(function(){try{localStorage.setItem('__t','1');localStorage.removeItem('__t');return true;}catch(e){return false;}})(),
+  mem:{},
+  get(k,def){try{if(this.ok){const v=localStorage.getItem(k);return v==null?def:JSON.parse(v);}}catch(e){}return (k in this.mem)?this.mem[k]:def;},
+  set(k,v){try{if(this.ok){localStorage.setItem(k,JSON.stringify(v));return;}}catch(e){}this.mem[k]=v;}
+};
+
+/* ---------------- DATELE SALVATE ---------------- */
+const DEFAULT_SAVE = {
+  best:0, money:0,
+  ownedSkins:['green'], skin:'green',
+  ownedTrails:['none'], trail:'none',
+  sound:true, music:true, vibe:true
+};
+let save = Object.assign({}, DEFAULT_SAVE, Store.get('moneyrun_save', {}));
+// asigura array-uri valide
+if(!Array.isArray(save.ownedSkins)||!save.ownedSkins.length) save.ownedSkins=['green'];
+if(!Array.isArray(save.ownedTrails)||!save.ownedTrails.length) save.ownedTrails=['none'];
+function persist(){ Store.set('moneyrun_save', save); }
+
+/* ---------------- CATALOG MAGAZIN (cosmetic) ---------------- */
+const SKINS = [
+  {id:'green', name:'Verde',  color:'#3ddc6e', price:0},
+  {id:'blue',  name:'Albastru',color:'#4aa3ff', price:150},
+  {id:'coral', name:'Coral',  color:'#ff6b6b', price:150},
+  {id:'purple',name:'Mov',    color:'#a06bff', price:300},
+  {id:'cyan',  name:'Cyan',   color:'#23d5d5', price:300},
+  {id:'pink',  name:'Roz',    color:'#ff7bc8', price:450},
+  {id:'gold',  name:'Auriu',  color:'#ffce3f', price:800},
+  {id:'shadow',name:'Umbra',  color:'#2b3550', price:1200}
+];
+const TRAILS = [
+  {id:'none',   name:'Fara',     color:'#bbbbbb', price:0},
+  {id:'spark',  name:'Scantei',  color:'#ffe27a', price:200},
+  {id:'fire',   name:'Foc',      color:'#ff7a2f', price:400},
+  {id:'rainbow',name:'Curcubeu', color:'#ff6bd5', price:600},
+  {id:'money',  name:'Bani',     color:'#3ddc6e', price:900}
+];
+
+/* ---------------- AUDIO (sinteza Web Audio, fara fisiere) ---------------- */
+const Audio2 = {
+  ctx:null, master:null, musicGain:null, musicTimer:null, musicOn:false,
+  init(){
+    if(this.ctx) return;
+    try{
+      this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+      this.master = this.ctx.createGain(); this.master.gain.value=0.5; this.master.connect(this.ctx.destination);
+      this.musicGain = this.ctx.createGain(); this.musicGain.gain.value=0.18; this.musicGain.connect(this.master);
+    }catch(e){}
+  },
+  resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  blip(freq,dur,type,vol,slideTo){
+    if(!save.sound || !this.ctx) return;
+    const t=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+    g.gain.setValueAtTime(vol||0.25,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+dur);
+  },
+  coin(){ this.blip(880,0.10,'square',0.18,1320); },
+  note(){ this.blip(660,0.08,'triangle',0.2); setTimeout(()=>this.blip(990,0.12,'triangle',0.2),60); },
+  jump(){ this.blip(300,0.18,'sine',0.25,720); },
+  duck(){ this.blip(420,0.12,'sine',0.2,220); },
+  power(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>this.blip(f,0.12,'square',0.2),i*55)); },
+  hit(){ if(!save.sound||!this.ctx)return; const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type='sawtooth'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(40,t+0.4);
+    g.gain.setValueAtTime(0.35,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+0.45); },
+  btn(){ this.blip(520,0.06,'square',0.15,640); },
+  // muzica de fundal: arpegiu simplu in bucla
+  startMusic(){
+    if(!save.music||!this.ctx||this.musicOn) return;
+    this.musicOn=true;
+    const scale=[262,330,392,440,523,392,330,294]; let i=0;
+    const step=()=>{
+      if(!this.musicOn) return;
+      const t=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+      o.type='triangle'; o.frequency.value=scale[i%scale.length];
+      g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.5,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.28);
+      o.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t+0.3);
+      // bas
+      const b=this.ctx.createOscillator(), bg=this.ctx.createGain();
+      b.type='sine'; b.frequency.value=scale[i%4]/2;
+      bg.gain.setValueAtTime(0.4,t); bg.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+      b.connect(bg); bg.connect(this.musicGain); b.start(t); b.stop(t+0.4);
+      i++; this.musicTimer=setTimeout(step,230);
+    };
+    step();
+  },
+  stopMusic(){ this.musicOn=false; clearTimeout(this.musicTimer); }
+};
+
+/* ---------------- CONFIG / CONSTANTE (modifica liber) ---------------- */
+const LANE_X=[-1,0,1];      // pozitia laterala a celor 3 benzi (unitati lume)
+const CAM_D=3.4;            // constanta de perspectiva (mai mic = perspectiva mai puternica)
+const SPAWN_D=16;           // adancimea la care apar obiectele
+const HIT_NEAR=-0.55, HIT_FAR=0.6;  // fereastra de coliziune in jurul jucatorului (d=0)
+const JUMP_CLEAR=0.55;      // inaltimea minima ca sa treci peste obstacole de sarit
+const GRAVITY=-42;          // gravitatie (spatiu inaltime)
+const JUMP_V=14;            // viteza initiala saritura
+
+// durate power-up-uri (secunde)
+const PW_MAGNET=10, PW_BOOST=4.5, PW_X2=12, PW_HIGHJUMP=12;
+
+/* ---------------- CANVAS ---------------- */
+const cvs=document.getElementById('game'), ctx=cvs.getContext('2d');
+let W=0,H=0,DPR=1, HORIZON_Y=0, NEAR_Y=0, ROAD_SPREAD=0, LIFT=0;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1, 2);
+  W=window.innerWidth; H=window.innerHeight;
+  cvs.width=W*DPR; cvs.height=H*DPR;
+  cvs.style.width=W+'px'; cvs.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  HORIZON_Y=H*0.36; NEAR_Y=H*0.93; ROAD_SPREAD=W*0.31; LIFT=H*0.42;
+}
+window.addEventListener('resize',resize); resize();
+
+/* proiectie pseudo-3D: d=adancime (0=jucator), worldX=banda, height=inaltime fata de sol */
+function persp(d){ return CAM_D/(CAM_D+Math.max(d,-CAM_D*0.85)); }
+function project(d,worldX,height){
+  const p=persp(d);
+  const gY=HORIZON_Y+(NEAR_Y-HORIZON_Y)*p;
+  return { x:W/2+worldX*ROAD_SPREAD*p, y:gY-(height||0)*LIFT*p, p:p, groundY:gY };
+}
+
+/* ---------------- STARE JOC ---------------- */
+let state='menu';          // menu | playing | paused | gameover
+let objects=[];            // obstacole + colectabile
+let particles=[];          // efecte
+let trailDots=[];          // trail jucator
+let player, distance, money, score, speed, spawnAcc, runPhase, invulnTimer;
+let usedRevive, lastT;
+// power-ups active
+let magnetT, boostT, x2T, highJumpT, shield;
+
+function resetRun(){
+  objects=[]; particles=[]; trailDots=[];
+  player={lane:1, x:0, vY:0, vyVel:0, jumping:false, ducking:false, duckT:0, hurtT:0};
+  distance=0; money=0; score=0; speed=6; spawnAcc=0; runPhase=0; invulnTimer=0;
+  magnetT=0; boostT=0; x2T=0; highJumpT=0; shield=false; usedRevive=false;
+}
+
+/* ---------------- DIFICULTATE ---------------- */
+function difficulty(){ return Math.min(9, distance/110); }
+function currentSpeed(){
+  let s=6+Math.min(8, distance/85);   // 6 -> 14
+  if(boostT>0) s*=1.65;
+  return s;
+}
+function currentGap(){ return Math.max(2.6, 6.8-difficulty()*0.62); } // distanta intre tipare
+
+/* ---------------- TIPURI OBSTACOLE ----------------
+   clear: 'jump' = sari peste | 'duck' = apleaca-te | 'lane' = schimba banda */
+const OBST={
+  box:    {clear:'jump', color:'#b07a3c', top:'#cf9a55', h:0.55, kind:'box'},
+  fence:  {clear:'jump', color:'#c0563a', top:'#e07a55', h:0.62, kind:'fence'},
+  pit:    {clear:'jump', color:'#10151f', top:'#10151f', h:0.0,  kind:'pit'},
+  barrier:{clear:'duck', color:'#d33', top:'#fff', h:1.15, kind:'barrier'},
+  car:    {clear:'lane', color:'#ff4757', top:'#ffd23f', h:0.95, kind:'car'}
+};
+
+/* ---------------- SPAWN ---------------- */
+function addObstacle(type,lane,d){
+  const o=OBST[type];
+  objects.push({kind:'obstacle', sub:o.kind, clear:o.clear, color:o.color, top:o.top,
+    hh:o.h, lane:lane, worldX:LANE_X[lane], d:d, passed:false});
+}
+function addCoin(lane,d,h){ objects.push({kind:'coin', lane:lane, worldX:LANE_X[lane], d:d, h:h||0.35, collected:false}); }
+function addNote(lane,d){ objects.push({kind:'note', lane:lane, worldX:LANE_X[lane], d:d, h:0.45, collected:false}); }
+function addPower(type,lane,d){ objects.push({kind:'power', ptype:type, lane:lane, worldX:LANE_X[lane], d:d, h:0.55, collected:false}); }
+
+function coinRun(lane,startD,n,h){ for(let i=0;i<n;i++) addCoin(lane,startD+i*0.85,h); }
+
+function spawnPattern(){
+  const r=Math.random(), d=SPAWN_D;
+  const lanes=[0,1,2];
+
+  if(r<0.30){
+    // un singur obstacol, banda random
+    const lane=lanes[Math.random()*3|0];
+    const types=['box','fence','car','barrier','pit'];
+    addObstacle(types[Math.random()*types.length|0], lane, d);
+    // monede pe alta banda
+    const free=lanes.filter(l=>l!==lane); coinRun(free[Math.random()*free.length|0], d-0.5, 3);
+  }
+  else if(r<0.55){
+    // doua benzi blocate, una libera garantat
+    const free=lanes[Math.random()*3|0];
+    lanes.filter(l=>l!==free).forEach(l=>addObstacle(Math.random()<0.5?'box':'car', l, d));
+    coinRun(free, d, 4);
+  }
+  else if(r<0.74){
+    // banda completa de sarit (sari peste tot)
+    const t=Math.random()<0.5?'pit':'fence';
+    lanes.forEach(l=>addObstacle(t,l,d));
+    // monede in aer deasupra (recompensa pt saritura)
+    coinRun(1, d, 3, 0.95);
+  }
+  else if(r<0.88){
+    // bariera completa (apleaca-te)
+    lanes.forEach(l=>addObstacle('barrier',l,d));
+    coinRun(lanes[Math.random()*3|0], d-0.5, 3, 0.3);
+  }
+  else{
+    // masina + monede pe banda libera
+    const lane=lanes[Math.random()*3|0];
+    addObstacle('car',lane,d);
+    const free=lanes.filter(l=>l!==lane); coinRun(free[Math.random()*free.length|0], d-0.3, 5);
+  }
+
+  // bancnota rara
+  if(Math.random()<0.25) addNote(lanes[Math.random()*3|0], d+1.2);
+
+  // power-up rar
+  if(Math.random()<0.14){
+    const pw=['magnet','shield','boost','x2','highjump'];
+    addPower(pw[Math.random()*pw.length|0], lanes[Math.random()*3|0], d+2.0);
+  }
+}
+
+/* ---------------- COLIZIUNE / CURATARE ---------------- */
+function sameLane(a,b){ return Math.abs(a-b)<0.5; }
+function isInvincible(){ return boostT>0 || invulnTimer>0; }
+
+function cleared(obj){
+  if(obj.clear==='jump') return player.vY>JUMP_CLEAR;
+  if(obj.clear==='duck') return player.ducking;
+  return false; // 'lane' nu se poate trece pe loc
+}
+
+function hitObstacle(){
+  if(isInvincible()) return;
+  if(shield){ shield=false; invulnTimer=1.0; Audio2.hit(); flashScreen(); vibrate(40);
+    spawnParticles(W/2+player.x*ROAD_SPREAD, NEAR_Y-player.vY*LIFT, '#7fd1ff', 16); return; }
+  gameOver();
+}
+
+/* ---------------- POWER-UP la colectare ---------------- */
+function applyPower(type){
+  Audio2.power(); vibrate(25);
+  if(type==='magnet') magnetT=PW_MAGNET;
+  else if(type==='shield') shield=true;
+  else if(type==='boost') boostT=PW_BOOST;
+  else if(type==='x2') x2T=PW_X2;
+  else if(type==='highjump') highJumpT=PW_HIGHJUMP;
+  const proj=project(0.4, player.x, 1.2);
+  spawnParticles(proj.x, proj.y, '#ffd23f', 18);
+}
+
+/* ---------------- PARTICULE ---------------- */
+function spawnParticles(x,y,color,n){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, sp=2+Math.random()*4;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-2,life:1,color});
+  }
+}
+
+/* ---------------- ACTIUNI JUCATOR ---------------- */
+function moveLeft(){ if(state!=='playing')return; if(player.lane>0){player.lane--; Audio2.btn(); vibrate(8);} }
+function moveRight(){ if(state!=='playing')return; if(player.lane<2){player.lane++; Audio2.btn(); vibrate(8);} }
+function jump(){
+  if(state!=='playing')return;
+  if(!player.jumping){
+    player.vyVel=JUMP_V*(highJumpT>0?1.4:1);
+    player.jumping=true; player.ducking=false; player.duckT=0;
+    Audio2.jump(); vibrate(10);
+  }
+}
+function duck(){
+  if(state!=='playing')return;
+  if(player.jumping){ player.vyVel=Math.min(player.vyVel,-6); } // coboara repede daca esti in aer
+  player.ducking=true; player.duckT=0.55; Audio2.duck();
+}
+
+/* ---------------- UPDATE ---------------- */
+function update(dt){
+  speed=currentSpeed();
+  const distGain=speed*dt;
+  distance+=distGain*1.4;   // metri
+  runPhase+=dt*speed*1.4;
+
+  // timere power-up
+  if(magnetT>0) magnetT-=dt;
+  if(boostT>0) boostT-=dt;
+  if(x2T>0) x2T-=dt;
+  if(highJumpT>0) highJumpT-=dt;
+  if(invulnTimer>0) invulnTimer-=dt;
+  if(player.hurtT>0) player.hurtT-=dt;
+
+  // jucator: interpolare banda
+  const tx=LANE_X[player.lane];
+  player.x+=(tx-player.x)*Math.min(1,dt*14);
+
+  // saritura
+  if(player.jumping){
+    player.vyVel+=GRAVITY*dt; player.vY+=player.vyVel*dt;
+    if(player.vY<=0){ player.vY=0; player.vyVel=0; player.jumping=false; }
+  }
+  // aplecare
+  if(player.duckT>0){ player.duckT-=dt; if(player.duckT<=0) player.ducking=false; }
+
+  // trail
+  if(save.trail!=='none' && Math.random()<0.6){
+    const pj=project(0, player.x, player.vY+0.25);
+    trailDots.push({x:pj.x,y:pj.y,life:1,sz:8+Math.random()*6});
+  }
+  for(let i=trailDots.length-1;i>=0;i--){ const t=trailDots[i]; t.life-=dt*1.6; t.y+=dt*30; if(t.life<=0) trailDots.splice(i,1); }
+
+  // particule
+  for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.4; p.life-=dt*1.5; if(p.life<=0) particles.splice(i,1); }
+
+  // spawn
+  spawnAcc+=distGain;
+  let guard=0;
+  while(spawnAcc>=currentGap() && guard++<10){ spawnAcc-=currentGap(); spawnPattern(); }
+
+  // obiecte
+  for(let i=objects.length-1;i>=0;i--){
+    const o=objects[i];
+    o.d-=speed*dt;
+
+    // magnet: trage colectabilele spre banda jucatorului
+    if(magnetT>0 && o.kind!=='obstacle' && !o.collected && o.d<4.5 && o.d>-1){
+      o.worldX+=(player.x-o.worldX)*Math.min(1,dt*5.5);
+      o.lane=player.lane;
+    }
+
+    if(o.kind==='obstacle'){
+      if(!o.passed && o.d<HIT_FAR && o.d>HIT_NEAR){
+        if(sameLane(player.x,o.worldX) && !cleared(o)){ o.passed=true; hitObstacle(); if(state!=='playing') return; }
+      }
+      if(o.d<-1.2) objects.splice(i,1);
+    } else {
+      // colectabil
+      if(!o.collected && o.d<HIT_FAR && o.d>HIT_NEAR-0.4){
+        const near = sameLane(player.x,o.worldX) || (magnetT>0 && Math.abs(player.x-o.worldX)<0.6);
+        // ia in calcul si inaltimea pt monedele din aer
+        const reach = o.h<0.7 || player.vY>0.3 || magnetT>0;
+        if(near && reach){
+          o.collected=true;
+          const pj=project(Math.max(o.d,0), o.worldX, o.h);
+          if(o.kind==='coin'){ addMoney(1); Audio2.coin(); spawnParticles(pj.x,pj.y,'#ffd23f',6); }
+          else if(o.kind==='note'){ addMoney(5); Audio2.note(); spawnParticles(pj.x,pj.y,'#3ddc6e',10); }
+          else if(o.kind==='power'){ applyPower(o.ptype); }
+        }
+      }
+      if(o.d<-1.2 || o.collected) objects.splice(i,1);
+    }
+  }
+
+  // scor = distanta + bani
+  score=Math.floor(distance)+money*5;
+  updateHUD();
+}
+
+function addMoney(v){ money += v*(x2T>0?2:1); }
+
+/* ---------------- RENDER ---------------- */
+function drawSky(){
+  const g=ctx.createLinearGradient(0,0,0,HORIZON_Y+20);
+  g.addColorStop(0,'#5fb8ff'); g.addColorStop(1,'#bfe8ff');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,HORIZON_Y+20);
+  // soare
+  ctx.fillStyle='rgba(255,231,122,.9)'; ctx.beginPath(); ctx.arc(W*0.8,HORIZON_Y*0.45,Math.min(W,H)*0.06,0,7); ctx.fill();
+  // nori (paralax simplu pe distanta)
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  const off=(distance*0.4)%(W+200);
+  for(let c=0;c<3;c++){ const cx=((c*((W+200)/3))-off+W+200)%(W+200)-100; cloud(cx,HORIZON_Y*0.35+c*16,28); }
+}
+function cloud(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.arc(x+r,y+4,r*0.8,0,7); ctx.arc(x-r,y+6,r*0.7,0,7); ctx.fill(); }
+
+function drawGround(){
+  // iarba (sub orizont)
+  ctx.fillStyle='#5fd068'; ctx.fillRect(0,HORIZON_Y,W,H-HORIZON_Y);
+  ctx.fillStyle='#52bd5b';
+  // dungi laterale care se misca (senzatie de viteza)
+  const period=2.0; const phase=(distance*0.5)%period;
+  for(let k=0;k<14;k++){
+    const d0=k*period - phase, d1=d0+period*0.5;
+    if(d1<0) continue;
+    const aL=project(Math.max(d0,0),-2.6,0), bL=project(d1,-2.6,0);
+    const aLi=project(Math.max(d0,0),-1.65,0), bLi=project(d1,-1.65,0);
+    ctx.beginPath(); ctx.moveTo(aL.x,aL.groundY); ctx.lineTo(aLi.x,aLi.groundY); ctx.lineTo(bLi.x,bLi.groundY); ctx.lineTo(bL.x,bL.groundY); ctx.closePath(); ctx.fill();
+    const aR=project(Math.max(d0,0),2.6,0), bR=project(d1,2.6,0);
+    const aRi=project(Math.max(d0,0),1.65,0), bRi=project(d1,1.65,0);
+    ctx.beginPath(); ctx.moveTo(aR.x,aR.groundY); ctx.lineTo(aRi.x,aRi.groundY); ctx.lineTo(bRi.x,bRi.groundY); ctx.lineTo(bR.x,bR.groundY); ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawRoad(){
+  const farD=30;
+  const nL=project(0,-1.6,0), nR=project(0,1.6,0);
+  const fL=project(farD,-1.6,0), fR=project(farD,1.6,0);
+  ctx.fillStyle='#5a6472';
+  ctx.beginPath(); ctx.moveTo(nL.x,nL.groundY); ctx.lineTo(nR.x,nR.groundY); ctx.lineTo(fR.x,fR.groundY); ctx.lineTo(fL.x,fL.groundY); ctx.closePath(); ctx.fill();
+  // marginile drumului
+  ctx.lineWidth=Math.max(2,W*0.006); ctx.strokeStyle='#454d5a';
+  ctx.beginPath(); ctx.moveTo(nL.x,nL.groundY); ctx.lineTo(fL.x,fL.groundY); ctx.moveTo(nR.x,nR.groundY); ctx.lineTo(fR.x,fR.groundY); ctx.stroke();
+
+  // linii intre benzi (dash animat) la worldX = -0.5 si 0.5
+  ctx.strokeStyle='rgba(255,210,91,.9)';
+  [-0.5,0.5].forEach(wx=>{
+    const period=2.2, phase=(distance*0.5)%period;
+    for(let k=0;k<16;k++){
+      const d0=k*period-phase, d1=d0+period*0.55;
+      if(d1<0||d0>farD) continue;
+      const a=project(Math.max(d0,0),wx,0), b=project(Math.min(d1,farD),wx,0);
+      ctx.lineWidth=Math.max(1.5,8*a.p);
+      ctx.beginPath(); ctx.moveTo(a.x,a.groundY); ctx.lineTo(b.x,b.groundY); ctx.stroke();
+    }
+  });
+}
+
+function drawShadow(d,worldX,size,jumpH){
+  const pj=project(d,worldX,0);
+  const a=Math.max(0.06,0.32-jumpH*0.12);
+  ctx.fillStyle='rgba(0,0,0,'+a+')';
+  ctx.beginPath(); ctx.ellipse(pj.x,pj.groundY, size*pj.p*0.6, size*pj.p*0.22, 0,0,7); ctx.fill();
+}
+
+function drawObject(o){
+  const pj=project(o.d,o.worldX,0);
+  if(o.p<=0) return;
+  const s=pj.p;
+  if(o.kind==='obstacle') drawObstacle(o,pj,s);
+  else drawCollectible(o,pj,s);
+}
+
+function drawObstacle(o,pj,s){
+  const laneW=ROAD_SPREAD*0.72*s;
+  if(o.sub==='pit'){
+    // groapa: oval intunecat in drum
+    ctx.fillStyle='#0b0f17';
+    ctx.beginPath(); ctx.ellipse(pj.x,pj.groundY, laneW*0.5, laneW*0.2, 0,0,7); ctx.fill();
+    ctx.strokeStyle='#2a3142'; ctx.lineWidth=2*s; ctx.stroke();
+    return;
+  }
+  drawShadow(o.d,o.worldX,laneW*0.8,0);
+  const h=o.hh*LIFT*s, w=laneW;
+  const x=pj.x-w/2, yTop=pj.groundY-h;
+  if(o.sub==='barrier'){
+    // bariera suspendata (treci pe dedesubt = aplecare)
+    const barH=0.18*LIFT*s, gap=0.55*LIFT*s;
+    ctx.fillStyle='#cc3333';
+    ctx.fillRect(x, pj.groundY-gap-barH, w, barH);
+    ctx.fillStyle='#ffffff';
+    for(let i=0;i<4;i++) ctx.fillRect(x+i*w/4, pj.groundY-gap-barH, w/8, barH);
+    // stalpi
+    ctx.fillStyle='#8a8f99'; ctx.fillRect(x,pj.groundY-gap-barH,4*s,gap+barH); ctx.fillRect(x+w-4*s,pj.groundY-gap-barH,4*s,gap+barH);
+    return;
+  }
+  if(o.sub==='car'){
+    // masina (schimba banda)
+    ctx.fillStyle=o.color;
+    roundRect(x, yTop, w, h, 8*s); ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,.2)'; roundRect(x+w*0.12,yTop+h*0.1,w*0.76,h*0.4,6*s); ctx.fill();
+    ctx.fillStyle='#bfe8ff'; roundRect(x+w*0.18,yTop+h*0.14,w*0.64,h*0.28,4*s); ctx.fill();
+    // faruri
+    ctx.fillStyle=o.top; ctx.beginPath(); ctx.arc(x+w*0.2,yTop+h*0.85,4*s,0,7); ctx.arc(x+w*0.8,yTop+h*0.85,4*s,0,7); ctx.fill();
+    return;
+  }
+  // cutie / gard (sari peste)
+  ctx.fillStyle=o.color; roundRect(x,yTop,w,h,6*s); ctx.fill();
+  ctx.fillStyle=o.top; roundRect(x,yTop,w,h*0.22,6*s); ctx.fill();
+  if(o.sub==='fence'){ ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=3*s;
+    for(let i=1;i<3;i++){ ctx.beginPath(); ctx.moveTo(x+i*w/3,yTop); ctx.lineTo(x+i*w/3,yTop+h); ctx.stroke(); } }
+}
+
+function drawCollectible(o,pj,s){
+  const r=(o.kind==='note'? 16:13)*s*1.1;
+  const y=pj.y - (o.h*LIFT*s);
+  const bob=Math.sin(runPhase*2+o.d)*3*s;
+  if(o.kind==='coin'){
+    ctx.fillStyle='#ffd23f'; ctx.beginPath(); ctx.ellipse(pj.x,y+bob,r,r*1.0,0,0,7); ctx.fill();
+    ctx.fillStyle='#e0a800'; ctx.beginPath(); ctx.ellipse(pj.x,y+bob,r*0.6,r*0.8,0,0,7); ctx.fill();
+    ctx.fillStyle='#fff7e6'; ctx.font='900 '+(r*1.1)+'px '+getFont(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('$',pj.x,y+bob+1);
+  } else if(o.kind==='note'){
+    ctx.fillStyle='#2fa85a'; roundRect(pj.x-r*1.4,y+bob-r*0.7,r*2.8,r*1.4,3*s); ctx.fill();
+    ctx.fillStyle='#3ddc6e'; roundRect(pj.x-r*1.2,y+bob-r*0.55,r*2.4,r*1.1,2*s); ctx.fill();
+    ctx.fillStyle='#0e7a3f'; ctx.font='900 '+(r*0.9)+'px '+getFont(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('$',pj.x,y+bob);
+  } else if(o.kind==='power'){
+    const map={magnet:'🧲',shield:'🛡',boost:'⚡',x2:'✖️',highjump:'🪂'};
+    ctx.fillStyle='rgba(255,255,255,.95)'; ctx.beginPath(); ctx.arc(pj.x,y+bob,r*1.5,0,7); ctx.fill();
+    ctx.strokeStyle='#18a558'; ctx.lineWidth=3*s; ctx.stroke();
+    ctx.font=(r*1.7)+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(map[o.ptype]||'?',pj.x,y+bob+2);
+  }
+}
+
+function getFont(){ return '"Trebuchet MS",system-ui,sans-serif'; }
+
+function drawPlayer(){
+  const skin=SKINS.find(s=>s.id===save.skin)||SKINS[0];
+  const pj=project(0,player.x,0);
+  drawShadow(0,player.x, W*0.10, player.vY);
+  const baseY=pj.groundY-player.vY*LIFT;
+  let bodyH=W*0.135, bodyW=W*0.085;
+  if(player.ducking){ bodyH*=0.55; bodyW*=1.2; }
+  const cx=pj.x;
+
+  // clipire la lovire cu scut
+  if(player.hurtT>0 && Math.floor(player.hurtT*20)%2===0) ctx.globalAlpha=0.45;
+
+  // picioare (animatie alergare)
+  if(!player.ducking){
+    const legSwing=Math.sin(runPhase*6)*bodyW*0.5*(player.jumping?0.2:1);
+    ctx.fillStyle=shade(skin.color,-30);
+    roundRect(cx-bodyW*0.45+legSwing, baseY-bodyH*0.18, bodyW*0.32, bodyH*0.32, 5); ctx.fill();
+    roundRect(cx+bodyW*0.13-legSwing, baseY-bodyH*0.18, bodyW*0.32, bodyH*0.32, 5); ctx.fill();
+  }
+  // corp
+  ctx.fillStyle=skin.color;
+  roundRect(cx-bodyW/2, baseY-bodyH, bodyW, bodyH*(player.ducking?1:0.85), bodyW*0.4); ctx.fill();
+  // cap
+  const headR=bodyW*0.46;
+  ctx.fillStyle=shade(skin.color,18);
+  ctx.beginPath(); ctx.arc(cx, baseY-bodyH-(player.ducking?headR*0.2:headR*0.6), headR,0,7); ctx.fill();
+  // ochi
+  ctx.fillStyle='#15233b';
+  const ey=baseY-bodyH-(player.ducking?headR*0.2:headR*0.6);
+  ctx.beginPath(); ctx.arc(cx+headR*0.35, ey-headR*0.1, headR*0.16,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx-headR*0.1, ey-headR*0.1, headR*0.16,0,7); ctx.fill();
+
+  ctx.globalAlpha=1;
+
+  // scut activ
+  if(shield){ ctx.strokeStyle='rgba(127,209,255,.9)'; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.arc(cx, baseY-bodyH*0.7, bodyW*1.0, 0, 7); ctx.stroke(); }
+  // boost aura
+  if(boostT>0){ ctx.strokeStyle='rgba(255,210,63,.85)'; ctx.lineWidth=3;
+    for(let i=0;i<3;i++){ ctx.beginPath(); ctx.arc(cx, baseY-bodyH*0.7, bodyW*(0.9+i*0.25+Math.sin(runPhase*8+i)*0.06),0,7); ctx.stroke(); } }
+}
+
+function drawTrail(){
+  if(save.trail==='none') return;
+  const tr=TRAILS.find(t=>t.id===save.trail)||TRAILS[0];
+  for(const t of trailDots){
+    ctx.globalAlpha=t.life*0.6;
+    let col=tr.color;
+    if(tr.id==='rainbow') col='hsl('+((distance*20+t.x)%360)+',90%,60%)';
+    if(tr.id==='fire') col=t.life>0.5?'#ff7a2f':'#ffd23f';
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(t.x,t.y,t.sz*t.life,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawParticles(){
+  for(const p of particles){ ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3+p.life*2,0,7); ctx.fill(); }
+  ctx.globalAlpha=1;
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  drawSky(); drawGround(); drawRoad();
+  drawTrail();
+  // obiecte de la departe spre aproape (pictor)
+  const sorted=objects.slice().sort((a,b)=>b.d-a.d);
+  for(const o of sorted) drawObject(o);
+  drawPlayer();
+  drawParticles();
+}
+
+/* helper-e desen */
+function roundRect(x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function shade(hex,amt){ const c=hex.replace('#',''); let r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),b=parseInt(c.substr(4,2),16);
+  r=Math.max(0,Math.min(255,r+amt)); g=Math.max(0,Math.min(255,g+amt)); b=Math.max(0,Math.min(255,b+amt));
+  return 'rgb('+r+','+g+','+b+')'; }
+
+/* ---------------- BUCLA PRINCIPALA ---------------- */
+function loop(t){
+  requestAnimationFrame(loop);
+  if(!lastT) lastT=t;
+  let dt=(t-lastT)/1000; lastT=t;
+  if(dt>0.05) dt=0.05; // cap (evita salturi mari)
+  if(state==='playing') update(dt);
+  if(state==='playing'||state==='paused'||state==='gameover') render();
+}
+requestAnimationFrame(loop);
+
+/* ---------------- HUD ---------------- */
+const el=id=>document.getElementById(id);
+function updateHUD(){
+  el('hudScore').textContent=score;
+  el('hudMoney').textContent=money;
+  el('hudDist').textContent=Math.floor(distance)+' m';
+  // power-ups
+  const box=el('pwups'); box.innerHTML='';
+  const add=(icon,t,max)=>{ if(t<=0)return; const d=document.createElement('div'); d.className='pw';
+    d.innerHTML=icon+'<span class="bar"><i style="width:'+(Math.max(0,t/max)*100)+'%"></i></span>'; box.appendChild(d); };
+  if(shield){ const d=document.createElement('div'); d.className='pw'; d.innerHTML='🛡'; box.appendChild(d); }
+  add('🧲',magnetT,PW_MAGNET); add('⚡',boostT,PW_BOOST); add('✖️',x2T,PW_X2); add('🪂',highJumpT,PW_HIGHJUMP);
+}
+
+/* ---------------- VIBRATII / FLASH ---------------- */
+function vibrate(ms){ if(save.vibe && navigator.vibrate){ try{navigator.vibrate(ms);}catch(e){} } }
+function flashScreen(){ const f=el('flash'); f.style.transition='none'; f.style.opacity='0.7';
+  requestAnimationFrame(()=>{ f.style.transition='opacity .4s'; f.style.opacity='0'; }); }
+
+/* ---------------- TRECERI DE STARE ---------------- */
+function showOverlay(id){ ['menu','shop','settings','pause','gameover'].forEach(o=>el(o).classList.toggle('show', o===id)); }
+function hideOverlays(){ ['menu','shop','settings','pause','gameover'].forEach(o=>el(o).classList.remove('show')); }
+
+function startGame(){
+  Audio2.init(); Audio2.resume();
+  resetRun();
+  hideOverlays();
+  el('hud').classList.add('show');
+  state='playing';
+  if(save.music) Audio2.startMusic();
+  countdownThen(()=>{});
+}
+function countdownThen(cb){
+  const c=el('countdown'); let n=3; c.classList.add('show'); state='paused';
+  c.textContent=n;
+  const tick=()=>{ n--; if(n>0){ c.textContent=n; Audio2.btn(); setTimeout(tick,650); }
+    else if(n===0){ c.textContent='GO!'; Audio2.coin(); setTimeout(tick,500); }
+    else { c.classList.remove('show'); state='playing'; lastT=0; cb&&cb(); } };
+  Audio2.btn(); setTimeout(tick,650);
+}
+
+function pauseGame(){ if(state!=='playing')return; state='paused'; Audio2.stopMusic(); showOverlay('pause'); }
+function resumeGame(){ if(state!=='paused')return; el('hud').classList.add('show'); hideOverlays(); if(save.music)Audio2.startMusic(); countdownThen(()=>{}); }
+
+function gameOver(){
+  state='gameover'; Audio2.hit(); Audio2.stopMusic(); vibrate([30,40,60]);
+  flashScreen();
+  // adauga banii la total
+  save.money+=money;
+  const isBest=score>save.best; if(isBest) save.best=score;
+  persist();
+  el('goScore').textContent=score;
+  el('goDist').textContent=Math.floor(distance)+' m';
+  el('goMoney').textContent=money;
+  el('goBest').textContent=save.best;
+  el('goBestFlag').style.display=isBest?'block':'none';
+  el('reviveBtn').disabled=usedRevive;
+  el('reviveBtn').textContent=usedRevive?'Deja folosit':'📺 Continua o data';
+  el('hud').classList.remove('show');
+  showOverlay('gameover');
+}
+
+/* Continua o data: placeholder pentru reward-ad.
+   Aici poti lega un SDK de reclame (AdMob etc.) prin Capacitor:
+   arati reclama, iar in callback-ul de "reward primit" apelezi revive(). */
+function revive(){
+  if(usedRevive) return;
+  usedRevive=true;
+  // sterge obstacolele apropiate si da invulnerabilitate scurta
+  objects=objects.filter(o=>o.kind!=='obstacle' || o.d>4);
+  invulnTimer=2.5; shield=true;
+  el('hud').classList.add('show'); hideOverlays();
+  if(save.music)Audio2.startMusic();
+  countdownThen(()=>{});
+}
+
+function goHome(){ state='menu'; Audio2.stopMusic(); el('hud').classList.remove('show'); refreshMenu(); showOverlay('menu'); }
+
+/* ---------------- MENIU / STATISTICI ---------------- */
+function refreshMenu(){ el('menuBest').textContent=save.best; el('menuMoney').textContent=save.money; }
+
+/* ---------------- SHOP ---------------- */
+let shopTab='skin';
+function renderShop(){
+  el('shopMoney').textContent=save.money;
+  const grid=el('shopGrid'); grid.innerHTML='';
+  const list=shopTab==='skin'?SKINS:TRAILS;
+  const owned=shopTab==='skin'?save.ownedSkins:save.ownedTrails;
+  const sel=shopTab==='skin'?save.skin:save.trail;
+  list.forEach(it=>{
+    const has=owned.includes(it.id), eq=sel===it.id;
+    const div=document.createElement('div');
+    div.className='item'+(has?' owned':'')+(eq?' equipped':'');
+    div.innerHTML='<div class="swatch" style="background:'+it.color+'"></div>'+
+      '<div class="nm">'+it.name+'</div>'+
+      (has?'<div class="pr have">'+(eq?'Echipat':'Echipeaza')+'</div>':'<div class="pr">💰 '+it.price+'</div>');
+    div.onclick=()=>shopBuyOrEquip(it,has,eq);
+    grid.appendChild(div);
+  });
+}
+function shopBuyOrEquip(it,has,eq){
+  Audio2.init();
+  if(eq){ Audio2.btn(); return; }
+  if(has){
+    if(shopTab==='skin') save.skin=it.id; else save.trail=it.id;
+    Audio2.coin(); persist(); renderShop(); return;
+  }
+  if(save.money>=it.price){
+    save.money-=it.price;
+    if(shopTab==='skin'){ save.ownedSkins.push(it.id); save.skin=it.id; }
+    else { save.ownedTrails.push(it.id); save.trail=it.id; }
+    Audio2.power(); vibrate(20); persist(); renderShop(); refreshMenu();
+  } else { Audio2.hit(); /* bani insuficienti */ }
+}
+
+/* ---------------- SETARI ---------------- */
+function refreshSettings(){
+  el('swSound').classList.toggle('on',save.sound);
+  el('swMusic').classList.toggle('on',save.music);
+  el('swVibe').classList.toggle('on',save.vibe);
+}
+
+/* ---------------- INPUT ---------------- */
+// tastatura (desktop / test)
+window.addEventListener('keydown',e=>{
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+  if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') moveLeft();
+  else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') moveRight();
+  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') jump();
+  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S') duck();
+  else if(e.key==='p'||e.key==='P'){ if(state==='playing')pauseGame(); else if(state==='paused')resumeGame(); }
+});
+
+// swipe / tap pe canvas
+let tsx=0,tsy=0,tst=0,moved=false;
+const SWIPE=28;
+cvs.addEventListener('touchstart',e=>{ const t=e.changedTouches[0]; tsx=t.clientX; tsy=t.clientY; tst=Date.now(); moved=false; },{passive:true});
+cvs.addEventListener('touchmove',e=>{ moved=true; },{passive:true});
+cvs.addEventListener('touchend',e=>{
+  const t=e.changedTouches[0], dx=t.clientX-tsx, dy=t.clientY-tsy;
+  const adx=Math.abs(dx), ady=Math.abs(dy);
+  if(adx<SWIPE && ady<SWIPE){ jump(); return; } // tap = saritura
+  if(adx>ady){ dx>0?moveRight():moveLeft(); }
+  else { dy<0?jump():duck(); }
+},{passive:true});
+
+// mouse swipe (desktop, optional)
+let mdx=0,mdy=0,mdown=false;
+cvs.addEventListener('mousedown',e=>{ mdown=true; mdx=e.clientX; mdy=e.clientY; });
+cvs.addEventListener('mouseup',e=>{ if(!mdown)return; mdown=false; const dx=e.clientX-mdx,dy=e.clientY-mdy;
+  const adx=Math.abs(dx),ady=Math.abs(dy);
+  if(adx<SWIPE&&ady<SWIPE){ jump(); return; }
+  if(adx>ady){ dx>0?moveRight():moveLeft(); } else { dy<0?jump():duck(); } });
+
+/* ---------------- LEGARE BUTOANE ---------------- */
+el('playBtn').onclick=()=>{ Audio2.init();Audio2.resume();Audio2.btn(); startGame(); };
+el('shopBtn').onclick=()=>{ Audio2.init();Audio2.btn(); renderShop(); showOverlay('shop'); };
+el('settingsBtn').onclick=()=>{ Audio2.init();Audio2.btn(); refreshSettings(); showOverlay('settings'); };
+el('pauseBtn').onclick=()=>{ Audio2.btn(); pauseGame(); };
+el('resumeBtn').onclick=()=>{ Audio2.btn(); resumeGame(); };
+el('pauseHome').onclick=()=>{ Audio2.btn(); goHome(); };
+el('replayBtn').onclick=()=>{ Audio2.btn(); startGame(); };
+el('goHome').onclick=()=>{ Audio2.btn(); goHome(); };
+el('reviveBtn').onclick=()=>{ Audio2.btn(); revive(); };
+el('shopBack').onclick=()=>{ Audio2.btn(); refreshMenu(); showOverlay('menu'); };
+el('settingsBack').onclick=()=>{ Audio2.btn(); refreshMenu(); showOverlay('menu'); };
+
+document.querySelectorAll('.shop-tab').forEach(b=>b.onclick=()=>{
+  shopTab=b.dataset.tab; document.querySelectorAll('.shop-tab').forEach(x=>x.classList.toggle('active',x===b)); renderShop();
+});
+
+el('swSound').onclick=()=>{ save.sound=!save.sound; persist(); refreshSettings(); Audio2.btn(); };
+el('swMusic').onclick=()=>{ save.music=!save.music; persist(); refreshSettings(); if(save.music){Audio2.init();} else {Audio2.stopMusic();} };
+el('swVibe').onclick=()=>{ save.vibe=!save.vibe; persist(); refreshSettings(); vibrate(15); };
+el('resetBtn').onclick=()=>{
+  if(confirm('Stergi tot progresul (scor, bani, skin-uri)?')){
+    save=Object.assign({}, DEFAULT_SAVE); persist(); refreshMenu(); refreshSettings(); Audio2.hit();
+  }
+};
+
+/* ---------------- HINT CONTROALE (desktop vs mobil) ---------------- */
+(function(){
+  const touch = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+  el('ctrlHint').textContent = touch
+    ? 'Swipe stanga/dreapta = schimba banda · sus = sari · jos = apleaca · tap = sari'
+    : 'Sageti / WASD = misca · Sus/Space = sari · Jos = apleaca · P = pauza';
+})();
+
+/* ---------------- INIT ---------------- */
+refreshMenu(); refreshSettings();
+
+/* ---------------- PWA: service worker (doar pe http/https) ---------------- */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
